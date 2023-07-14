@@ -1,4 +1,6 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.JsonPatch;
+using Microsoft.AspNetCore.Mvc;
+using SipayApi.Models;
 
 namespace SipayApi.Controllers;
 
@@ -17,14 +19,7 @@ public class ApiResponse<T>
     }
 }
 
-public class Student
-{
-    public long Id { get; set; }
-    public string Name { get; set; }
-    public string Lastname { get; set; }
-    public int Age { get; set; }
-    public string Email { get; set; }
-}
+
 
 [ApiController]
 [Route("sipy/api/[controller]")]
@@ -34,68 +29,125 @@ public class StudentController : ControllerBase
     public StudentController()
     {
         list = new();
-        list.Add(new Student { Id = 1, Age = 23, Email = "deny@sellen.com", Lastname = "Sellen", Name = "Deny" });
-        list.Add(new Student { Id = 2, Age = 24, Email = "deny@sellen.com", Lastname = "Sellen", Name = "Deny" });
-        list.Add(new Student { Id = 3, Age = 25, Email = "deny@sellen.com", Lastname = "Sellen", Name = "Deny" });
+        list.Add(new Student { Id = 1, Age = 23, Email = "aleyna@gmail.com", Lastname = "Barut", Name = "Aleyna" });
+        list.Add(new Student { Id = 2, Age = 29, Email = "ebru@gmail.com", Lastname = "Kaya", Name = "Ebru" });
+        list.Add(new Student { Id = 3, Age = 18, Email = "kubra@gmail.com", Lastname = "Yılmaz", Name = "Kübra" });
     }
 
 
     [HttpGet]
-    public ApiResponse<List<Student>> Get()
+    public IActionResult Get()
+
     {
-        return new ApiResponse<List<Student>>(list);
+        try
+        {
+            return Ok(list);
+        }
+        catch (Exception ex)
+        {
+            // Hata durumunda 500 (Internal Server Error) hatası döndürür
+            return StatusCode(500, "An error occurred: " + ex.Message);
+        }
     }
 
     [HttpGet("{id}")]
-    public ApiResponse<Student> Get(int id)
+    public IActionResult Get(int id)
     {
-        return new ApiResponse<Student>(list.FirstOrDefault(x => x.Id == id));
+        var student = list.FirstOrDefault(x => x.Id == id);
+        if (student != null)
+        {
+            return Ok(student);
+        }
+        else
+        {
+            return NotFound();
+        }
     }
 
     [HttpGet("ByParameters")]
-    public ApiResponse<List<Student>> Get([FromQuery] string name, [FromQuery] string lastname, [FromQuery] int age)
+    public IActionResult Get([FromQuery] string name, [FromQuery] string lastname, [FromQuery] int age)
     {
+        List<Student> filteredList = list;
+
         if (!string.IsNullOrWhiteSpace(name))
         {
-            list = list.Where(x=> x.Name.ToUpper().Contains(name.ToUpper())).ToList();
+            filteredList = filteredList.Where(x => x.Name.ToUpper().Contains(name.ToUpper())).ToList();
         }
         if (!string.IsNullOrWhiteSpace(lastname))
         {
-            list = list.Where(x => x.Lastname.ToUpper().Contains(lastname.ToUpper())).ToList();
+            filteredList = filteredList.Where(x => x.Lastname.ToUpper().Contains(lastname.ToUpper())).ToList();
         }
-        return new ApiResponse<List<Student>>(list);
+
+        return Ok(filteredList);
     }
 
+   
+
     [HttpPost]
-    public ApiResponse<List<Student>> Post([FromBody] Student student)
+    public IActionResult Post([FromBody] Student student)
     {
         student.Id = list.Count() + 1;
         list.Add(student);
-        return new ApiResponse<List<Student>>(list);
+        // Yeni kaynağın URI'si
+        var resourceUri = Url.Action("Get", new { id = student.Id });
+
+        // 201 (Created) durum kodunu ve yeni kaynağın URI'sini döndürür
+        return Created(resourceUri, list);
     }
 
     [HttpPut("{id}")]
-    public ApiResponse<List<Student>> Put(int id, [FromBody] Student student)
+    public IActionResult Put(int id, [FromBody] Student student)
     {
-        var exist = list.FirstOrDefault(x => x.Id == id);   
-        if (exist != null)
+        var existingStudent = list.FirstOrDefault(x => x.Id == id);
+        if (existingStudent != null)
         {
-            list.Remove(exist);
+            list.Remove(existingStudent);
             student.Id = id;
             list.Add(student);
         }
-        return new ApiResponse<List<Student>>(list);
+
+        return Ok(list);
     }
 
 
     [HttpDelete("{id}")]
-    public ApiResponse<List<Student>> Delete(int id)
+    public IActionResult Delete(int id)
     {
-        var exist = list.FirstOrDefault(x => x.Id == id);
-        if (exist != null)
+        var existingStudent = list.FirstOrDefault(x => x.Id == id);
+        if (existingStudent != null)
         {
-            list.Remove(exist);           
+            list.Remove(existingStudent);
+            return Ok(list);
         }
-        return new ApiResponse<List<Student>>(list);
+        else
+        {
+            return BadRequest("Student Not Found.");
+        }
+    }
+
+    // Microsoft.AspNetCore.Mvc.NewtonsoftJson nuget paketi eklendi.Startup.cs ekleme yapıldı.
+    // Bir JSON kaynağının belirli bir kısmını değiştirmek (ya da eklemek) istiyorsak, HttpPatch operasyonunu kullanıyoruz.
+
+    [HttpPatch("{id}")]
+    public IActionResult Patch(int id, JsonPatchDocument<Student> patchDocument)
+    {
+        if (patchDocument == null)
+        {
+            return BadRequest(ModelState);
+        }
+        var exist = list.FirstOrDefault(x => x.Id == id);
+        if (exist == null)
+        {
+            return NotFound();
+        }
+
+        patchDocument.ApplyTo(exist, ModelState);
+
+        if (ModelState.IsValid)
+        {
+            return Ok(exist);
+        }
+
+        return BadRequest(ModelState);
     }
 }
